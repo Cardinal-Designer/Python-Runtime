@@ -1,5 +1,6 @@
 from PySide2 import QtCore, QtGui, QtWidgets, QtMultimedia
 from PySide2.QtCore import Signal
+import requests,lxml
 import os,sys,json
 agrv = sys.argv
 sys.path.append(agrv[1])
