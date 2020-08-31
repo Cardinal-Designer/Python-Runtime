@@ -20,15 +20,69 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-#       - uses: actions/checkout@v2
-#       - uses: actions/setup-python@v2
-#         with:
-#           python-version: '3.8' # Version range or exact version of a Python version to use, using SemVer's version range syntax
-#           architecture: 'x86' # optional x64 or x86. Defaults to x64 if not specified
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8' # Version range or exact version of a Python version to use, using SemVer's version range syntax
+          architecture: 'x86' # optional x64 or x86. Defaults to x64 if not specified
 
-#       # Runs a single command using the runners shell
-#       - name: Install
-#         run: python -m pip install pyinstaller
+      # Runs a single command using the runners shell
+      - name: Install
+        run: python -m pip install pyinstaller pyside2
       
-      - name: Build
-        run: dir
+      - uses: Cardinal-Designer/Runtime
+      - name: Build 
+        run: pyinstaller -w -D wrapper.py
+        
+      - name: MakePkg
+        run: |
+          cd dist
+          Compress-Archive -Path .\wrapper 'wrapper.zip'
+
+      - name: createReleaseWin
+        id: createReleaseWin
+        if: startsWith(github.event.ref, 'refs/tags/') && steps.queryReleaseWin.outputs.needCreateRelease == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/create-release@v1.0.0
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+      # 重定向upload_url到环境变量uploadUrl。
+      - name: getLatestTagRelease
+        # tag 上一步无论成功还是失败都执行
+        if: startsWith(github.event.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          githubFullName: ${{ github.event.repository.full_name }}
+          upUrl: ${{ steps.createReleaseWin.outputs.upload_url }}
+          ref: ${{ github.event.ref }}
+        run: |
+          # upUrl不为空，导出就完事
+          if (${env:upUrl}.Length -gt 0) {
+              $v=${env:upUrl}
+              echo "::set-env name=uploadUrl::$v"
+              return
+          } 
+          [string]$tag = ${env:ref}.Substring(${env:ref}.LastIndexOf('/') + 1)
+          [string]$url = 'https://api.github.com/repos/' + ${env:githubFullName} + '/releases/tags/' + ${tag}
+          $response = Invoke-RestMethod -Uri $url -Method Get
+          [string]$latestUpUrl = $response.upload_url
+          Write-Host 'latestUpUrl:'$latestUpUrl
+          echo "::set-env name=uploadUrl::$latestUpUrl"
+          Write-Host 'env uploadUrl:'${env:uploadUrl}
+      # tag 上传Release
+      - name: uploadRelease
+        id: uploadRelease
+        if: startsWith(github.event.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-release-asset@v1.0.1
+        with:
+          upload_url: ${{ env.uploadUrl }}
+          asset_path: ./wrapper.zip
+          asset_name: wrapper.zip
+          asset_content_type: application/zip
