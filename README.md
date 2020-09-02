@@ -23,3 +23,5 @@ wrapper [python程序所在目录 -> 一定要是目录！] [传入参数]
 ```
 
 windows用户使用wrapper.exe执行
+
+> 附注：本项目使用Github Actions自动化打包构建
